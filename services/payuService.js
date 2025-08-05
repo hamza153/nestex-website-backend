@@ -80,8 +80,8 @@ class PayUService {
       }
 
       const txnid = this.generateTransactionId();
-      const surl = `${process.env.BASE_URL || 'https://zewst-restaurant-pos-prod-c4aa97ddd561.herokuapp.com'}/api/payu/success`;
-      const furl = `${process.env.BASE_URL || 'https://zewst-restaurant-pos-prod-c4aa97ddd561.herokuapp.com'}/api/payu/failure`;
+      const surl = `${process.env.BASE_URL || 'https://nestex-website-backend-543a54e82797.herokuapp.com'}/api/payu/success`;
+      const furl = `${process.env.BASE_URL || 'https://nestex-website-backend-543a54e82797.herokuapp.com'}/api/payu/failure`;
 
       // Prepare payment parameters
       const paymentParams = {
