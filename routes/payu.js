@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PayUService = require('../services/payuService');
+const WebhookMongoSchema = require('../models/webhook');
 
 // Initialize PayU service
 const payuService = new PayUService();
@@ -232,11 +233,29 @@ router.post('/webhook', async (req, res) => {
  * Success callback handler
  * GET /api/payu/success
  */
-router.get('/success', (req, res) => {
+router.get('/success', async (req, res) => {
   try {
     const { txnid, mihpayid, status, amount, email, phone, firstname, productinfo, hash } = req.query;
     
     console.log('Payment success callback:', req.query);
+
+    const webhookData = {
+      qrWebHookEvent: 'payment_success',
+      qrWebHookPayload: req.query,
+      qrWebHookData: {
+        transactionId: txnid,
+        payuPaymentId: mihpayid,
+        status: status,
+        amount: amount,
+        customerEmail: email,
+        customerPhone: phone,
+        customerName: firstname,
+        productInfo: productinfo
+      }
+    };
+
+    const webhook = new WebhookMongoSchema(webhookData);
+    await webhook.save();
     
     res.json({
       success: true,
@@ -266,11 +285,29 @@ router.get('/success', (req, res) => {
  * Failure callback handler
  * GET /api/payu/failure
  */
-router.get('/failure', (req, res) => {
+router.get('/failure', async (req, res) => {
   try {
     const { txnid, mihpayid, status, amount, email, phone, firstname, productinfo, hash } = req.query;
     
     console.log('Payment failure callback:', req.query);
+
+    const webhookData = {
+      qrWebHookEvent: 'payment_failure',
+      qrWebHookPayload: req.query,
+      qrWebHookData: {
+        transactionId: txnid,
+        payuPaymentId: mihpayid,
+        status: status,
+        amount: amount,
+        customerEmail: email,
+        customerPhone: phone,
+        customerName: firstname,
+        productInfo: productinfo
+      }
+    };
+
+    const webhook = new WebhookMongoSchema(webhookData);
+    await webhook.save();
     
     res.json({
       success: false,
