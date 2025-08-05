@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PayU QR Code Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .qr-section {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .qr-code {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            background: white;
+        }
+        .payment-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .upi-link {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .upi-link:hover {
+            background: #0056b3;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #218838;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧾 PayU QR Code Payment Demo</h1>
+        
+        <div class="payment-info">
+            <h3>📋 Payment Details</h3>
+            <div class="form-group">
+                <label for="amount">Amount (₹):</label>
+                <input type="number" id="amount" value="100.50" step="0.01" min="1">
+            </div>
+            <div class="form-group">
+                <label for="customerName">Customer Name:</label>
+                <input type="text" id="customerName" value="John Doe">
+            </div>
+            <div class="form-group">
+                <label for="customerEmail">Customer Email:</label>
+                <input type="email" id="customerEmail" value="john@example.com">
+            </div>
+            <div class="form-group">
+                <label for="customerPhone">Customer Phone:</label>
+                <input type="tel" id="customerPhone" value="9876543210">
+            </div>
+            <button onclick="generateQRCode()">🔄 Generate QR Code</button>
+        </div>
+
+        <div id="qrSection" class="qr-section" style="display: none;">
+            <h3>📱 Scan QR Code to Pay</h3>
+            <div class="qr-code">
+                <img id="qrCodeImage" alt="Payment QR Code" style="max-width: 300px;">
+            </div>
+            
+            <div class="payment-info">
+                <h4>💰 Payment Information</h4>
+                <p><strong>Transaction ID:</strong> <span id="transactionId"></span></p>
+                <p><strong>Amount:</strong> ₹<span id="displayAmount"></span></p>
+                <p><strong>Customer:</strong> <span id="displayCustomer"></span></p>
+                
+                <h4>🔗 Direct Payment Links</h4>
+                <a id="upiLink" class="upi-link" href="#" target="_blank">
+                    💳 Pay via UPI
+                </a>
+                <br>
+                <a id="paymentLink" class="upi-link" href="#" target="_blank">
+                    🌐 Open Payment Page
+                </a>
+            </div>
+        </div>
+
+        <div id="status" class="status" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function generateQRCode() {
+            const statusDiv = document.getElementById('status');
+            const qrSection = document.getElementById('qrSection');
+            
+            // Get form data
+            const amount = document.getElementById('amount').value;
+            const customerName = document.getElementById('customerName').value;
+            const customerEmail = document.getElementById('customerEmail').value;
+            const customerPhone = document.getElementById('customerPhone').value;
+
+            if (!amount || amount <= 0) {
+                showStatus('Please enter a valid amount', 'error');
+                return;
+            }
+
+            try {
+                showStatus('🔄 Generating QR Code...', 'success');
+                
+                // Call your API endpoint
+                const response = await fetch('/api/payu/generate-qr-static', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        customerId: 'CUST_' + Date.now(),
+                        customerName: customerName,
+                        customerEmail: customerEmail,
+                        customerPhone: customerPhone,
+                        amount: parseFloat(amount)
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Display QR code
+                    document.getElementById('qrCodeImage').src = data.data.qrCodeDataUrl;
+                    document.getElementById('transactionId').textContent = data.data.transactionId;
+                    document.getElementById('displayAmount').textContent = data.data.amount;
+                    document.getElementById('displayCustomer').textContent = data.data.customerName;
+                    
+                    // Set up payment links
+                    document.getElementById('upiLink').href = data.data.upiPaymentUrl;
+                    document.getElementById('paymentLink').href = data.data.qrPaymentUrl;
+                    
+                    qrSection.style.display = 'block';
+                    showStatus('✅ QR Code generated successfully!', 'success');
+                } else {
+                    showStatus('❌ Failed to generate QR code: ' + data.message, 'error');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('❌ Error generating QR code: ' + error.message, 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+            statusDiv.style.display = 'block';
+            
+            // Auto-hide success messages after 5 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Demo function to simulate API response (for testing without backend)
+        function demoQRGeneration() {
+            const amount = document.getElementById('amount').value;
+            const customerName = document.getElementById('customerName').value;
+            
+            // Create a demo QR code (this would normally come from your API)
+            const demoQRData = {
+                transactionId: 'TXN_' + Date.now(),
+                amount: amount,
+                customerName: customerName,
+                qrCodeDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+                upiPaymentUrl: 'upi://pay?pa=test@payu&pn=Demo&am=' + amount + '&tn=Payment&cu=INR',
+                qrPaymentUrl: 'https://test.payu.in/_payment?key=test&amount=' + amount
+            };
+
+            // Display the demo data
+            document.getElementById('qrCodeImage').src = demoQRData.qrCodeDataUrl;
+            document.getElementById('transactionId').textContent = demoQRData.transactionId;
+            document.getElementById('displayAmount').textContent = demoQRData.amount;
+            document.getElementById('displayCustomer').textContent = demoQRData.customerName;
+            
+            document.getElementById('upiLink').href = demoQRData.upiPaymentUrl;
+            document.getElementById('paymentLink').href = demoQRData.qrPaymentUrl;
+            
+            document.getElementById('qrSection').style.display = 'block';
+            showStatus('✅ Demo QR Code generated! (This is a placeholder)', 'success');
+        }
+
+        // Uncomment the line below to test with demo data
+        // window.generateQRCode = demoQRGeneration;
+    </script>
+</body>
+</html> 
