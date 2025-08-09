@@ -3,6 +3,7 @@ const router = express.Router();
 const PayUService = require("../services/payuService");
 const WebhookMongoSchema = require("../models/webhook");
 const qr = require("qrcode");
+const { URL } = require("url");
 
 // Initialize PayU service
 const payuService = new PayUService();
@@ -232,20 +233,19 @@ router.post("/success", async (req, res) => {
     const webhook = new WebhookMongoSchema(webhookData);
     await webhook.save();
 
-    res.json({
-      success: true,
-      message: "Payment successful",
-      data: {
-        transactionId: txnid,
-        payuPaymentId: mihpayid,
-        status: status,
-        amount: amount,
-        customerEmail: email,
-        customerPhone: phone,
-        customerName: firstname,
-        productInfo: productinfo,
-      },
-    });
+    const successUrl = new URL(process.env.FE_BASE_URL + "/payment/success");
+    successUrl.searchParams.set("txnid", txnid);
+    if (amount !== undefined && amount !== null) {
+      successUrl.searchParams.set("amount", String(amount));
+    }
+    if (firstname) {
+      successUrl.searchParams.set("firstname", firstname);
+    }
+    if (status) {
+      successUrl.searchParams.set("status", status);
+    }
+
+    return res.redirect(303, successUrl.toString());
   } catch (error) {
     console.error("Error in success callback:", error);
     res.status(500).json({
@@ -338,20 +338,22 @@ router.post("/failure", async (req, res) => {
     const webhook = new WebhookMongoSchema(webhookData);
     await webhook.save();
 
-    res.json({
-      success: false,
-      message: "Payment failed",
-      data: {
-        transactionId: txnid,
-        payuPaymentId: mihpayid,
-        status: status,
-        amount: amount,
-        customerEmail: email,
-        customerPhone: phone,
-        customerName: firstname,
-        productInfo: productinfo,
-      },
-    });
+    const failureUrl = new URL(process.env.FE_BASE_URL + "/payment/failure");
+    failureUrl.searchParams.set("txnid", `${txnid}_failed`);
+    if (amount !== undefined && amount !== null) {
+      failureUrl.searchParams.set("amount", String(amount));
+    }
+    if (firstname) {
+      failureUrl.searchParams.set("firstname", firstname);
+    }
+    if (error) {
+      failureUrl.searchParams.set("error_code", error);
+    }
+    if (error_Message) {
+      failureUrl.searchParams.set("error_Message", error_Message);
+    }
+
+    return res.redirect(303, failureUrl.toString());
   } catch (error) {
     console.error("Error in failure callback:", error);
     res.status(500).json({
