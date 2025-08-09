@@ -1,53 +1,68 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const PayUService = require('../services/payuService');
-const WebhookMongoSchema = require('../models/webhook');
+const PayUService = require("../services/payuService");
+const WebhookMongoSchema = require("../models/webhook");
+const qr = require("qrcode");
 
 // Initialize PayU service
 const payuService = new PayUService();
 
-/**
- * Generate QR code using PayU's Insta Static QR Generation API
- * POST /api/payu/generate-qr-static
- * Body: { customerId: string, customerName: string, customerEmail: string, customerPhone: string, amount: number }
- */
-router.post('/generate-qr-static', async (req, res) => {
+router.post("/generate-qr-for-payment-page", async (req, res) => {
   try {
-    const { customerId, customerName, customerEmail, customerPhone, amount } = req.body;
+    const { customerName, customerEmail, customerPhone, amount } = req.body;
 
-    // Validate required fields
-    if (!amount || amount <= 0) {
-      return res.status(400).json({
-        error: 'Amount is required and must be greater than 0'
-      });
-    }
+    //using payment redirect route create a QR
+    const qrLink =
+      process.env.BASE_URL +
+      "/api/payu/payment-redirect?customerName=" +
+      customerName +
+      "&customerEmail=" +
+      customerEmail +
+      "&customerPhone=" +
+      customerPhone +
+      "&amount=" +
+      amount;
 
-    if (!customerId) {
-      return res.status(400).json({
-        error: 'Customer ID is required'
-      });
-    }
-
-    // Generate QR code using PayU's API
-    const qrData = await payuService.generateQRCode({
-      customerId,
-      customerName: customerName || 'Customer',
-      customerEmail: customerEmail || 'customer@example.com',
-      customerPhone: customerPhone || '9999999999',
-      amount
-    });
+    const qrImage = await qr.toDataURL(qrLink);
 
     res.json({
       success: true,
-      data: qrData,
-      message: 'QR code generated successfully using PayU API'
+      data: {
+        qrCodeDataUrl: qrImage,
+        amount: amount,
+        customerName: customerName,
+      },
+      message: "QR code generated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to generate QR code for payment page",
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/payu/generate-qr-static
+ * Body: { customerId: string, customerName: string, customerEmail: string, customerPhone: string, amount: number }
+ */
+router.get("/payment-redirect", async (req, res) => {
+  try {
+    const { customerName, customerEmail, customerPhone, amount } = req.query;
+
+    // Generate QR code using PayU's API
+    const qrData = await payuService.generatePaymentIntent({
+      customerName: customerName || "Customer",
+      customerEmail: customerEmail || "customer@example.com",
+      customerPhone: customerPhone || "9999999999",
+      amount: parseFloat(amount),
     });
 
+    res.send(qrData);
   } catch (error) {
-    console.error('Error generating QR code:', error);
     res.status(500).json({
-      error: 'Failed to generate QR code',
-      message: error.message
+      error: "Failed to redirect to payment page",
+      message: error.message,
     });
   }
 });
@@ -57,13 +72,13 @@ router.post('/generate-qr-static', async (req, res) => {
  * POST /api/payu/verify-payment
  * Body: { txnid: string }
  */
-router.post('/verify-payment', async (req, res) => {
+router.post("/verify-payment", async (req, res) => {
   try {
     const { txnid } = req.body;
 
     if (!txnid) {
       return res.status(400).json({
-        error: 'Transaction ID is required'
+        error: "Transaction ID is required",
       });
     }
 
@@ -72,14 +87,13 @@ router.post('/verify-payment', async (req, res) => {
     res.json({
       success: true,
       data: paymentStatus,
-      message: 'Payment status retrieved successfully'
+      message: "Payment status retrieved successfully",
     });
-
   } catch (error) {
-    console.error('Error verifying payment:', error);
+    console.error("Error verifying payment:", error);
     res.status(500).json({
-      error: 'Failed to verify payment',
-      message: error.message
+      error: "Failed to verify payment",
+      message: error.message,
     });
   }
 });
@@ -88,13 +102,13 @@ router.post('/verify-payment', async (req, res) => {
  * Get payment status by transaction ID
  * GET /api/payu/payment-status/:txnid
  */
-router.get('/payment-status/:txnid', async (req, res) => {
+router.get("/payment-status/:txnid", async (req, res) => {
   try {
     const { txnid } = req.params;
 
     if (!txnid) {
       return res.status(400).json({
-        error: 'Transaction ID is required'
+        error: "Transaction ID is required",
       });
     }
 
@@ -103,14 +117,13 @@ router.get('/payment-status/:txnid', async (req, res) => {
     res.json({
       success: true,
       data: paymentStatus,
-      message: 'Payment status retrieved successfully'
+      message: "Payment status retrieved successfully",
     });
-
   } catch (error) {
-    console.error('Error getting payment status:', error);
+    console.error("Error getting payment status:", error);
     res.status(500).json({
-      error: 'Failed to get payment status',
-      message: error.message
+      error: "Failed to get payment status",
+      message: error.message,
     });
   }
 });
@@ -119,13 +132,13 @@ router.get('/payment-status/:txnid', async (req, res) => {
  * Get transaction details
  * GET /api/payu/transaction/:txnid
  */
-router.get('/transaction/:txnid', async (req, res) => {
+router.get("/transaction/:txnid", async (req, res) => {
   try {
     const { txnid } = req.params;
 
     if (!txnid) {
       return res.status(400).json({
-        error: 'Transaction ID is required'
+        error: "Transaction ID is required",
       });
     }
 
@@ -134,59 +147,13 @@ router.get('/transaction/:txnid', async (req, res) => {
     res.json({
       success: true,
       data: transactionDetails,
-      message: 'Transaction details retrieved successfully'
+      message: "Transaction details retrieved successfully",
     });
-
   } catch (error) {
-    console.error('Error getting transaction details:', error);
+    console.error("Error getting transaction details:", error);
     res.status(500).json({
-      error: 'Failed to get transaction details',
-      message: error.message
-    });
-  }
-});
-
-/**
- * Create payment form
- * POST /api/payu/create-form
- * Body: { amount: number, customerName?: string, customerEmail?: string, customerPhone?: string }
- */
-router.post('/create-form', async (req, res) => {
-  try {
-    const { amount, customerName, customerEmail, customerPhone } = req.body;
-
-    // Validate required fields
-    if (!amount || amount <= 0) {
-      return res.status(400).json({
-        error: 'Amount is required and must be greater than 0'
-      });
-    }
-
-    // Generate payment request
-    const paymentData = await payuService.generatePaymentRequest({
-      amount,
-      customerName: customerName || 'Customer',
-      customerEmail: customerEmail || 'customer@example.com',
-      customerPhone: customerPhone || '9999999999'
-    });
-
-    // Create payment form
-    const paymentForm = payuService.createPaymentForm(paymentData);
-
-    res.json({
-      success: true,
-      data: {
-        ...paymentData,
-        paymentForm: paymentForm
-      },
-      message: 'Payment form created successfully'
-    });
-
-  } catch (error) {
-    console.error('Error creating payment form:', error);
-    res.status(500).json({
-      error: 'Failed to create payment form',
-      message: error.message
+      error: "Failed to get transaction details",
+      message: error.message,
     });
   }
 });
@@ -195,19 +162,19 @@ router.post('/create-form', async (req, res) => {
  * PayU webhook handler
  * POST /api/payu/webhook
  */
-router.post('/webhook', async (req, res) => {
+router.post("/webhook", async (req, res) => {
   try {
     const webhookData = req.body;
-    
-    console.log('Webhook received:', webhookData);
-    
+
+    console.log("Webhook received:", webhookData);
+
     // Verify webhook signature
     const isValid = payuService.verifyWebhookSignature(webhookData);
-    
+
     if (!isValid) {
-      console.error('Invalid webhook signature');
+      console.error("Invalid webhook signature");
       return res.status(400).json({
-        error: 'Invalid webhook signature'
+        error: "Invalid webhook signature",
       });
     }
 
@@ -217,14 +184,13 @@ router.post('/webhook', async (req, res) => {
     res.json({
       success: true,
       data: processedData,
-      message: 'Webhook processed successfully'
+      message: "Webhook processed successfully",
     });
-
   } catch (error) {
-    console.error('Error processing webhook:', error);
+    console.error("Error processing webhook:", error);
     res.status(500).json({
-      error: 'Failed to process webhook',
-      message: error.message
+      error: "Failed to process webhook",
+      message: error.message,
     });
   }
 });
@@ -233,15 +199,24 @@ router.post('/webhook', async (req, res) => {
  * Success callback handler
  * GET /api/payu/success
  */
-router.get('/success', async (req, res) => {
+router.post("/success", async (req, res) => {
   try {
-    const { txnid, mihpayid, status, amount, email, phone, firstname, productinfo, hash } = req.query;
-    
-    console.log('Payment success callback:', req.query);
+    const {
+      txnid,
+      mihpayid,
+      status,
+      amount,
+      email,
+      phone,
+      firstname,
+      productinfo,
+      hash,
+    } = req.body;
+
 
     const webhookData = {
-      qrWebHookEvent: 'payment_success',
-      qrWebHookPayload: req.query,
+      qrWebHookEvent: "payment_success",
+      qrWebHookPayload: req.body,
       qrWebHookData: {
         transactionId: txnid,
         payuPaymentId: mihpayid,
@@ -250,16 +225,16 @@ router.get('/success', async (req, res) => {
         customerEmail: email,
         customerPhone: phone,
         customerName: firstname,
-        productInfo: productinfo
-      }
+        productInfo: productinfo,
+      },
     };
 
     const webhook = new WebhookMongoSchema(webhookData);
     await webhook.save();
-    
+
     res.json({
       success: true,
-      message: 'Payment successful',
+      message: "Payment successful",
       data: {
         transactionId: txnid,
         payuPaymentId: mihpayid,
@@ -268,15 +243,14 @@ router.get('/success', async (req, res) => {
         customerEmail: email,
         customerPhone: phone,
         customerName: firstname,
-        productInfo: productinfo
-      }
+        productInfo: productinfo,
+      },
     });
-
   } catch (error) {
-    console.error('Error in success callback:', error);
+    console.error("Error in success callback:", error);
     res.status(500).json({
-      error: 'Error processing success callback',
-      message: error.message
+      error: "Error processing success callback",
+      message: error.message,
     });
   }
 });
@@ -285,33 +259,88 @@ router.get('/success', async (req, res) => {
  * Failure callback handler
  * GET /api/payu/failure
  */
-router.get('/failure', async (req, res) => {
+router.post("/failure", async (req, res) => {
   try {
-    const { txnid, mihpayid, status, amount, email, phone, firstname, productinfo, hash } = req.query;
-    
-    console.log('Payment failure callback:', req.query);
+    const {
+      mihpayid,
+      status,
+      unmappedstatus,
+      key,
+      txnid,
+      amount,
+      net_amount_debit,
+      addedon,
+      productinfo,
+      firstname,
+      lastname,
+      address1,
+      address2,
+      city,
+      state,
+      country,
+      zipcode,
+      email,
+      phone,
+      hash,
+      field1,
+      field2,
+      field3,
+      field4,
+      field5,
+      field6,
+      field7,
+      field8,
+      field9,
+      payment_source,
+      error,
+      error_Message,
+    } = req.body;
 
     const webhookData = {
-      qrWebHookEvent: 'payment_failure',
-      qrWebHookPayload: req.query,
+      qrWebHookEvent: "payment_failure",
+      qrWebHookPayload: req.body,
       qrWebHookData: {
-        transactionId: txnid,
-        payuPaymentId: mihpayid,
+        payu_id: mihpayid,
         status: status,
+        unmapped_status: unmappedstatus,
+        key: key,
+        txnid: txnid,
         amount: amount,
-        customerEmail: email,
-        customerPhone: phone,
-        customerName: firstname,
-        productInfo: productinfo
-      }
+        net_amount_debit: net_amount_debit,
+        added_on: addedon,
+        product_info: productinfo,
+        customer_first_name: firstname,
+        customer_last_name: lastname,
+        customer_address1: address1,
+        customer_address2: address2,
+        customer_city: city,
+        customer_state: state,
+        customer_country: country,
+        customer_zipcode: zipcode,
+        customer_email: email,
+        customer_phone: phone,
+        hash: hash,
+        field1: field1,
+        field2: field2,
+        field3: field3,
+        field4: field4,
+        field5: field5,
+        field6: field6,
+        field7: field7,
+        field8: field8,
+        field9: field9,
+        payment_source: payment_source,
+        error: error,
+        error_message: error_Message,
+      },
     };
 
     const webhook = new WebhookMongoSchema(webhookData);
     await webhook.save();
-    
+
     res.json({
       success: false,
-      message: 'Payment failed',
+      message: "Payment failed",
       data: {
         transactionId: txnid,
         payuPaymentId: mihpayid,
@@ -320,17 +349,16 @@ router.get('/failure', async (req, res) => {
         customerEmail: email,
         customerPhone: phone,
         customerName: firstname,
-        productInfo: productinfo
-      }
+        productInfo: productinfo,
+      },
     });
-
   } catch (error) {
-    console.error('Error in failure callback:', error);
+    console.error("Error in failure callback:", error);
     res.status(500).json({
-      error: 'Error processing failure callback',
-      message: error.message
+      error: "Error processing failure callback",
+      message: error.message,
     });
   }
 });
 
-module.exports = router; 
+module.exports = router;
