@@ -105,16 +105,12 @@ class PayUService {
       const firstname = customerName;
       const email = customerEmail;
       const phone = customerPhone;
-      const udf1 = paymentId;
-      const udf2 = customerId;
 
       const hash = this.generateHash({
         key: this.merchantKey,
         txnid: txnid,
         expirytime: 3600,
         amount: amountFormatted.toFixed(2),
-        udf1: udf1,
-        udf2: udf2,
       });
 
       const data = await this.payUClient.paymentInitiate({
@@ -129,8 +125,6 @@ class PayUService {
         surl: surl,
         furl: furl,
         hash,
-        udf1: udf1,
-        udf2: udf2,
       });
 
       return data;
@@ -249,7 +243,9 @@ class PayUService {
       const webhook = new WebhookMongoSchema(webhookData);
       await webhook.save();
 
-      const payment = await PaymentMongoSchema.findById(udf1);
+      const payment = await PaymentMongoSchema.findOne({
+        reference: txnid,
+      });
       payment.status = eventType === "payment_success" ? "success" : "failed";
       payment.paymentId = mihpayid || "";
       payment.qrWebHookData = webhookData;
