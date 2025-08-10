@@ -53,9 +53,9 @@ router.get("/payment-redirect", async (req, res) => {
 
     // Generate QR code using PayU's API
     const qrData = await payuService.generatePaymentIntent({
-      customerName: customer.name,
-      customerEmail: customer.email,
-      customerPhone: customer.contact,
+      customerName: customerName,
+      customerEmail: customerEmail,
+      customerPhone: customerPhone,
       amount: parseFloat(amount),
     });
 
