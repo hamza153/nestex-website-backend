@@ -53,9 +53,9 @@ router.get("/payment-redirect", async (req, res) => {
 
     // Generate QR code using PayU's API
     const qrData = await payuService.generatePaymentIntent({
-      customerName: customerName || "Customer",
-      customerEmail: customerEmail || "customer@example.com",
-      customerPhone: customerPhone || "9999999999",
+      customerName: customer.name,
+      customerEmail: customer.email,
+      customerPhone: customer.contact,
       amount: parseFloat(amount),
     });
 
@@ -69,183 +69,17 @@ router.get("/payment-redirect", async (req, res) => {
 });
 
 /**
- * Verify payment status
- * POST /api/payu/verify-payment
- * Body: { txnid: string }
- */
-router.post("/verify-payment", async (req, res) => {
-  try {
-    const { txnid } = req.body;
-
-    if (!txnid) {
-      return res.status(400).json({
-        error: "Transaction ID is required",
-      });
-    }
-
-    const paymentStatus = await payuService.verifyPayment(txnid);
-
-    res.json({
-      success: true,
-      data: paymentStatus,
-      message: "Payment status retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Error verifying payment:", error);
-    res.status(500).json({
-      error: "Failed to verify payment",
-      message: error.message,
-    });
-  }
-});
-
-/**
- * Get payment status by transaction ID
- * GET /api/payu/payment-status/:txnid
- */
-router.get("/payment-status/:txnid", async (req, res) => {
-  try {
-    const { txnid } = req.params;
-
-    if (!txnid) {
-      return res.status(400).json({
-        error: "Transaction ID is required",
-      });
-    }
-
-    const paymentStatus = await payuService.getPaymentStatus(txnid);
-
-    res.json({
-      success: true,
-      data: paymentStatus,
-      message: "Payment status retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Error getting payment status:", error);
-    res.status(500).json({
-      error: "Failed to get payment status",
-      message: error.message,
-    });
-  }
-});
-
-/**
- * Get transaction details
- * GET /api/payu/transaction/:txnid
- */
-router.get("/transaction/:txnid", async (req, res) => {
-  try {
-    const { txnid } = req.params;
-
-    if (!txnid) {
-      return res.status(400).json({
-        error: "Transaction ID is required",
-      });
-    }
-
-    const transactionDetails = await payuService.getTransactionDetails(txnid);
-
-    res.json({
-      success: true,
-      data: transactionDetails,
-      message: "Transaction details retrieved successfully",
-    });
-  } catch (error) {
-    console.error("Error getting transaction details:", error);
-    res.status(500).json({
-      error: "Failed to get transaction details",
-      message: error.message,
-    });
-  }
-});
-
-/**
- * PayU webhook handler
- * POST /api/payu/webhook
- */
-router.post("/webhook", async (req, res) => {
-  try {
-    const webhookData = req.body;
-
-    console.log("Webhook received:", webhookData);
-
-    // Verify webhook signature
-    const isValid = payuService.verifyWebhookSignature(webhookData);
-
-    if (!isValid) {
-      console.error("Invalid webhook signature");
-      return res.status(400).json({
-        error: "Invalid webhook signature",
-      });
-    }
-
-    // Process webhook data
-    const processedData = await payuService.processWebhook(webhookData);
-
-    res.json({
-      success: true,
-      data: processedData,
-      message: "Webhook processed successfully",
-    });
-  } catch (error) {
-    console.error("Error processing webhook:", error);
-    res.status(500).json({
-      error: "Failed to process webhook",
-      message: error.message,
-    });
-  }
-});
-
-/**
  * Success callback handler
  * GET /api/payu/success
  */
 router.post("/success", async (req, res) => {
   try {
-    const {
-      txnid,
-      mihpayid,
-      status,
-      amount,
-      email,
-      phone,
-      firstname,
-      productinfo,
-      hash,
-    } = req.body;
+    const url = await payuService.savePaymentResponse(
+      req.body,
+      "payment_success"
+    );
 
-
-    const webhookData = {
-      qrWebHookEvent: "payment_success",
-      qrWebHookPayload: req.body,
-      qrWebHookData: {
-        transactionId: txnid,
-        payuPaymentId: mihpayid,
-        status: status,
-        amount: amount,
-        customerEmail: email,
-        customerPhone: phone,
-        customerName: firstname,
-        productInfo: productinfo,
-      },
-    };
-
-    const webhook = new WebhookMongoSchema(webhookData);
-    await webhook.save();
-
-    const successUrl = new URL(process.env.FE_BASE_URL + "/payment/success");
-    successUrl.searchParams.set("txnid", txnid);
-    if (amount !== undefined && amount !== null) {
-      successUrl.searchParams.set("amount", String(amount));
-    }
-    if (firstname) {
-      successUrl.searchParams.set("firstname", firstname);
-    }
-    if (status) {
-      successUrl.searchParams.set("status", status);
-    }
-
-    return res.redirect(303, successUrl.toString());
+    return res.redirect(303, url);
   } catch (error) {
     console.error("Error in success callback:", error);
     res.status(500).json({
@@ -261,99 +95,12 @@ router.post("/success", async (req, res) => {
  */
 router.post("/failure", async (req, res) => {
   try {
-    const {
-      mihpayid,
-      status,
-      unmappedstatus,
-      key,
-      txnid,
-      amount,
-      net_amount_debit,
-      addedon,
-      productinfo,
-      firstname,
-      lastname,
-      address1,
-      address2,
-      city,
-      state,
-      country,
-      zipcode,
-      email,
-      phone,
-      hash,
-      field1,
-      field2,
-      field3,
-      field4,
-      field5,
-      field6,
-      field7,
-      field8,
-      field9,
-      payment_source,
-      error,
-      error_Message,
-    } = req.body;
+    const url = await payuService.savePaymentResponse(
+      req.body,
+      "payment_failure"
+    );
 
-    const webhookData = {
-      qrWebHookEvent: "payment_failure",
-      qrWebHookPayload: req.body,
-      qrWebHookData: {
-        payu_id: mihpayid,
-        status: status,
-        unmapped_status: unmappedstatus,
-        key: key,
-        txnid: txnid,
-        amount: amount,
-        net_amount_debit: net_amount_debit,
-        added_on: addedon,
-        product_info: productinfo,
-        customer_first_name: firstname,
-        customer_last_name: lastname,
-        customer_address1: address1,
-        customer_address2: address2,
-        customer_city: city,
-        customer_state: state,
-        customer_country: country,
-        customer_zipcode: zipcode,
-        customer_email: email,
-        customer_phone: phone,
-        hash: hash,
-        field1: field1,
-        field2: field2,
-        field3: field3,
-        field4: field4,
-        field5: field5,
-        field6: field6,
-        field7: field7,
-        field8: field8,
-        field9: field9,
-        payment_source: payment_source,
-        error: error,
-        error_message: error_Message,
-      },
-    };
-
-    const webhook = new WebhookMongoSchema(webhookData);
-    await webhook.save();
-
-    const failureUrl = new URL(process.env.FE_BASE_URL + "/payment/failure");
-    failureUrl.searchParams.set("txnid", `${txnid}_failed`);
-    if (amount !== undefined && amount !== null) {
-      failureUrl.searchParams.set("amount", String(amount));
-    }
-    if (firstname) {
-      failureUrl.searchParams.set("firstname", firstname);
-    }
-    if (error) {
-      failureUrl.searchParams.set("error_code", error);
-    }
-    if (error_Message) {
-      failureUrl.searchParams.set("error_Message", error_Message);
-    }
-
-    return res.redirect(303, failureUrl.toString());
+    return res.redirect(303, url);
   } catch (error) {
     console.error("Error in failure callback:", error);
     res.status(500).json({

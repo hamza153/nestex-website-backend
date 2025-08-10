@@ -31,17 +31,6 @@ app.get("/", (req, res) => {
     version: "1.0.0",
     endpoints: {
       health: "/health",
-      payu: {
-        generateQRStatic: "/api/payu/generate-qr-static",
-        generateQR: "/api/payu/generate-qr",
-        verifyPayment: "/api/payu/verify-payment",
-        paymentStatus: "/api/payu/payment-status/:txnid",
-        transactionDetails: "/api/payu/transaction/:txnid",
-        createForm: "/api/payu/create-form",
-        webhook: "/api/payu/webhook",
-        success: "/api/payu/success",
-        failure: "/api/payu/failure",
-      },
     },
   });
 });

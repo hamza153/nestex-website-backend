@@ -4,6 +4,9 @@ const QRCode = require("qrcode");
 const { v4: uuidv4 } = require("uuid");
 const cheerio = require("cheerio");
 const PayU = require("payu-websdk");
+const UserMongoSchema = require("../models/user");
+const PaymentMongoSchema = require("../models/payment");
+const WebhookMongoSchema = require("../models/webhook");
 
 class PayUService {
   constructor() {
@@ -35,13 +38,6 @@ class PayUService {
   }
 
   /**
-   * Generate a unique qr ID
-   */
-  generateQrId() {
-    return `QR_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
    * Generate hash for PayU API
    */
   generateHash(params) {
@@ -59,34 +55,6 @@ class PayUService {
     return hash;
   }
 
-  extractQrOrUpi(html) {
-    const $ = cheerio.load(html);
-
-    // Option A: Look for <img> (QR code)
-    const imgSrc = $("img")
-      .filter((i, el) => {
-        const src = $(el).attr("src") || "";
-        return (
-          src.includes("upi") || src.endsWith(".png") || src.includes("qr")
-        );
-      })
-      .first()
-      .attr("src");
-
-    if (imgSrc) {
-      return { type: "qrImage", url: imgSrc };
-    }
-
-    // Option B: Look for <a href="upi://...">
-    const link = $('a[href^="upi://"]').first().attr("href");
-    if (link) {
-      return { type: "upiLink", url: link };
-    }
-
-    // If not found
-    return null;
-  }
-
   /**
    * Generate QR code using PayU's API for QR payments
    */
@@ -101,7 +69,35 @@ class PayUService {
         throw new Error("PayU credentials not configured");
       }
 
+      let customer = await UserMongoSchema.findOne({ email: customerEmail });
+
+      if (!customer) {
+        customer = new UserMongoSchema({
+          name: customerName,
+          email: customerEmail,
+          contact: customerPhone,
+        });
+        await customer.save();
+      }
+
       const txnid = this.generateTransactionId();
+
+      const payment = new PaymentMongoSchema({
+        amount: parseFloat(amount),
+        reference: txnid,
+        status: "pending",
+        transactionReferenceId: txnid,
+        thirdPartyTransactionId: txnid,
+      });
+
+      await payment.save();
+
+      const paymentId = payment._id;
+      const customerId = customer._id;
+
+      customer.payments.push(paymentId);
+      await customer.save();
+
       const surl = `${process.env.BASE_URL}/api/payu/success`;
       const furl = `${process.env.BASE_URL}/api/payu/failure`;
       const amountFormatted = parseFloat(amount);
@@ -109,12 +105,16 @@ class PayUService {
       const firstname = customerName;
       const email = customerEmail;
       const phone = customerPhone;
+      const udf1 = paymentId;
+      const udf2 = customerId;
 
       const hash = this.generateHash({
         key: this.merchantKey,
         txnid: txnid,
         expirytime: 3600,
         amount: amountFormatted.toFixed(2),
+        udf1: udf1,
+        udf2: udf2,
       });
 
       const data = await this.payUClient.paymentInitiate({
@@ -129,6 +129,8 @@ class PayUService {
         surl: surl,
         furl: furl,
         hash,
+        udf1: udf1,
+        udf2: udf2,
       });
 
       return data;
@@ -139,305 +141,151 @@ class PayUService {
   }
 
   /**
-   * Verify payment status using PayU API
+   * Save Payment Response
    */
-  async verifyPayment(txnid) {
+  async savePaymentResponse(paymentResponse, eventType) {
+    const {
+      mihpayid,
+      status,
+      unmappedstatus,
+      key,
+      txnid,
+      amount,
+      net_amount_debit,
+      addedon,
+      productinfo,
+      firstname,
+      lastname,
+      address1,
+      address2,
+      city,
+      state,
+      country,
+      zipcode,
+      email,
+      phone,
+      udf1,
+      udf2,
+      udf3,
+      udf4,
+      udf5,
+      udf6,
+      udf7,
+      udf8,
+      udf9,
+      udf10,
+      hash,
+      field1,
+      field2,
+      field3,
+      field4,
+      field5,
+      field6,
+      field7,
+      field8,
+      field9,
+      payment_source,
+      error,
+      error_Message,
+      meCode,
+      PG_TYPE,
+      bank_ref_num,
+      bankcode,
+    } = paymentResponse;
     try {
-      if (!this.merchantKey || !this.merchantSalt) {
-        throw new Error("PayU credentials not configured");
-      }
-
-      const verificationParams = {
-        key: this.merchantKey,
-        command: "verify_payment",
-        var1: txnid,
-        hash: this.generateHash({
-          key: this.merchantKey,
-          command: "verify_payment",
-          var1: txnid,
-        }),
-      };
-
-      // Use appropriate API endpoint based on environment
-      let apiEndpoint;
-      if (this.mode === "production") {
-        apiEndpoint = `${this.baseUrl}/merchant/postservice.php?form=2`;
-      } else {
-        apiEndpoint = `${this.baseUrl}/merchant/postservice.php?form=2`;
-      }
-
-      // Make API call to PayU verification endpoint
-      const response = await axios.post(apiEndpoint, verificationParams, {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
+      const webhookData = {
+        qrWebHookEvent: eventType,
+        qrWebHookPayload: paymentResponse,
+        qrWebHookData: {
+          payu_id: mihpayid,
+          status: status,
+          unmapped_status: unmappedstatus,
+          key: key,
+          txnid: txnid,
+          amount: amount,
+          net_amount_debit: net_amount_debit,
+          added_on: addedon,
+          product_info: productinfo,
+          customer_first_name: firstname,
+          customer_last_name: lastname || "",
+          customer_address1: address1 || "",
+          customer_address2: address2 || "",
+          customer_city: city || "",
+          customer_state: state || "",
+          customer_country: country || "",
+          customer_zipcode: zipcode || "",
+          customer_email: email,
+          customer_phone: phone,
+          udf1: udf1 || "",
+          udf2: udf2 || "",
+          udf3: udf3 || "",
+          udf4: udf4 || "",
+          udf5: udf5 || "",
+          udf6: udf6 || "",
+          udf7: udf7 || "",
+          udf8: udf8 || "",
+          udf9: udf9 || "",
+          udf10: udf10 || "",
+          hash: hash,
+          field1: field1 || "",
+          field2: field2 || "",
+          field3: field3 || "",
+          field4: field4 || "",
+          field5: field5 || "",
+          field6: field6 || "",
+          field7: field7 || "",
+          field8: field8 || "",
+          field9: field9 || "",
+          payment_source: payment_source,
+          error: error || "",
+          error_message: error_Message || "",
+          meCode: meCode || "",
+          PG_TYPE: PG_TYPE || "",
+          bank_ref_num: bank_ref_num || "",
+          bankcode: bankcode || "",
         },
-        timeout: 10000,
-      });
+      };
 
-      console.log("PayU verification response:", response.data);
+      const webhook = new WebhookMongoSchema(webhookData);
+      await webhook.save();
 
-      // Parse PayU response
-      const responseData = response.data;
+      const payment = await PaymentMongoSchema.findById(udf1);
+      payment.status = eventType === "payment_success" ? "success" : "failed";
+      payment.paymentId = mihpayid || "";
+      payment.qrWebHookData = webhookData;
+      await payment.save();
 
-      if (responseData.status === "success") {
-        return {
-          transactionId: txnid,
-          status: "success",
-          amount: responseData.amount || "0.00",
-          paymentDate: new Date().toISOString(),
-          payuPaymentId: responseData.mihpayid || "",
-          bankRefNumber: responseData.bank_ref_num || "",
-          mode: responseData.mode || "",
-          bankCode: responseData.bankcode || "",
-          message: "Payment verified successfully",
-        };
+      let url = new URL(process.env.FE_BASE_URL);
+
+      if (eventType === "payment_success") {
+        url.pathname = "/payment/success";
       } else {
-        return {
-          transactionId: txnid,
-          status: "failed",
-          message: responseData.error_Message || "Payment verification failed",
-          errorCode: responseData.error_code || "",
-        };
+        url.pathname = "/payment/failure";
       }
+
+      url.searchParams.set("txnid", txnid);
+      if (amount !== undefined && amount !== null) {
+        url.searchParams.set("amount", amount);
+      }
+      if (firstname) {
+        url.searchParams.set("firstname", firstname);
+      }
+      if (email) {
+        url.searchParams.set("email", email);
+      }
+      if (phone) {
+        url.searchParams.set("phone", phone);
+      }
+      if (error) {
+        url.searchParams.set("error_code", error);
+      }
+      if (error_Message) {
+        url.searchParams.set("error_message", error_Message);
+      }
+      return url.toString();
     } catch (error) {
-      console.error("Error verifying payment:", error);
-
-      // If API call fails, return error response
-      return {
-        transactionId: txnid,
-        status: "error",
-        message: "Failed to verify payment",
-        error: error.message,
-      };
-    }
-  }
-
-  /**
-   * Get payment status from PayU
-   */
-  async getPaymentStatus(txnid) {
-    try {
-      if (!this.merchantKey || !this.merchantSalt) {
-        throw new Error("PayU credentials not configured");
-      }
-
-      const statusParams = {
-        key: this.merchantKey,
-        command: "get_merchant_ibibo_details",
-        var1: txnid,
-        hash: this.generateHash({
-          key: this.merchantKey,
-          command: "get_merchant_ibibo_details",
-          var1: txnid,
-        }),
-      };
-
-      // Use appropriate API endpoint based on environment
-      let apiEndpoint;
-      if (this.mode === "production") {
-        apiEndpoint = `${this.baseUrl}/merchant/postservice.php?form=2`;
-      } else {
-        apiEndpoint = `${this.baseUrl}/merchant/postservice.php?form=2`;
-      }
-
-      // Make API call to PayU status endpoint
-      const response = await axios.post(apiEndpoint, statusParams, {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        timeout: 10000,
-      });
-
-      console.log("PayU status response:", response.data);
-
-      const responseData = response.data;
-
-      if (responseData.status === "success") {
-        return {
-          transactionId: txnid,
-          status: "success",
-          amount: responseData.amount || "0.00",
-          paymentDate: new Date().toISOString(),
-          payuPaymentId: responseData.mihpayid || "",
-          bankRefNumber: responseData.bank_ref_num || "",
-          mode: responseData.mode || "",
-          bankCode: responseData.bankcode || "",
-          customerName: responseData.firstname || "",
-          customerEmail: responseData.email || "",
-          customerPhone: responseData.phone || "",
-        };
-      } else {
-        return {
-          transactionId: txnid,
-          status: "failed",
-          message: responseData.error_Message || "Payment status check failed",
-          errorCode: responseData.error_code || "",
-        };
-      }
-    } catch (error) {
-      console.error("Error getting payment status:", error);
-      return {
-        transactionId: txnid,
-        status: "error",
-        message: "Failed to get payment status",
-        error: error.message,
-      };
-    }
-  }
-
-  /**
-   * Verify webhook signature
-   */
-  verifyWebhookSignature(webhookData) {
-    try {
-      const receivedHash = webhookData.hash;
-      const calculatedHash = this.generateHash(webhookData);
-
-      console.log("Webhook signature verification:", {
-        received: receivedHash,
-        calculated: calculatedHash,
-        isValid: receivedHash === calculatedHash,
-      });
-
-      return receivedHash === calculatedHash;
-    } catch (error) {
-      console.error("Error verifying webhook signature:", error);
-      return false;
-    }
-  }
-
-  /**
-   * Process webhook data
-   */
-  async processWebhook(webhookData) {
-    try {
-      const {
-        txnid,
-        mihpayid,
-        status,
-        amount,
-        email,
-        phone,
-        firstname,
-        productinfo,
-        udf1,
-        udf2,
-        udf3,
-        udf4,
-        udf5,
-        hash,
-        bank_ref_num,
-        mode,
-        bankcode,
-      } = webhookData;
-
-      // Log webhook data
-      console.log("Webhook received:", {
-        transactionId: txnid,
-        payuPaymentId: mihpayid,
-        status: status,
-        amount: amount,
-        customerEmail: email,
-        customerPhone: phone,
-        customerName: firstname,
-        productInfo: productinfo,
-        bankRefNumber: bank_ref_num,
-        mode: mode,
-        bankCode: bankcode,
-      });
-
-      // Here you would typically:
-      // 1. Update your database with payment status
-      // 2. Send confirmation emails
-      // 3. Trigger business logic based on payment status
-      // 4. Update inventory, etc.
-
-      // For now, we'll just return the processed data
-      return {
-        success: true,
-        transactionId: txnid,
-        status: status,
-        amount: amount,
-        payuPaymentId: mihpayid,
-        bankRefNumber: bank_ref_num,
-        mode: mode,
-        bankCode: bankcode,
-        customerName: firstname,
-        customerEmail: email,
-        customerPhone: phone,
-        processedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      console.error("Error processing webhook:", error);
-      throw new Error("Failed to process webhook");
-    }
-  }
-
-  /**
-   * Create a payment form for direct submission
-   */
-  createPaymentForm(paymentData) {
-    const formHtml = `
-      <form id="payuForm" action="${paymentData.paymentUrl}" method="post">
-        <input type="hidden" name="key" value="${paymentData.formData.key}">
-        <input type="hidden" name="txnid" value="${paymentData.formData.txnid}">
-        <input type="hidden" name="amount" value="${paymentData.formData.amount}">
-        <input type="hidden" name="productinfo" value="${paymentData.formData.productinfo}">
-        <input type="hidden" name="firstname" value="${paymentData.formData.firstname}">
-        <input type="hidden" name="email" value="${paymentData.formData.email}">
-        <input type="hidden" name="phone" value="${paymentData.formData.phone}">
-        <input type="hidden" name="pg" value="${paymentData.formData.pg}">
-        <input type="hidden" name="bankcode" value="${paymentData.formData.bankcode}">
-        <input type="hidden" name="surl" value="${paymentData.formData.surl}">
-        <input type="hidden" name="furl" value="${paymentData.formData.furl}">
-        <input type="hidden" name="mode" value="${paymentData.formData.mode}">
-        <input type="hidden" name="hash" value="${paymentData.formData.hash}">
-        <button type="submit">Pay Now</button>
-      </form>
-    `;
-
-    return formHtml;
-  }
-
-  /**
-   * Get PayU transaction details
-   */
-  async getTransactionDetails(txnid) {
-    try {
-      if (!this.merchantKey || !this.merchantSalt) {
-        throw new Error("PayU credentials not configured");
-      }
-
-      const detailsParams = {
-        key: this.merchantKey,
-        command: "get_merchant_ibibo_details",
-        var1: txnid,
-        hash: this.generateHash({
-          key: this.merchantKey,
-          command: "get_merchant_ibibo_details",
-          var1: txnid,
-        }),
-      };
-
-      // Use appropriate API endpoint based on environment
-      let apiEndpoint;
-      if (this.mode === "production") {
-        apiEndpoint = `${this.baseUrl}/merchant/postservice.php?form=2`;
-      } else {
-        apiEndpoint = `${this.baseUrl}/merchant/postservice.php?form=2`;
-      }
-
-      const response = await axios.post(apiEndpoint, detailsParams, {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        timeout: 10000,
-      });
-
-      return response.data;
-    } catch (error) {
-      console.error("Error getting transaction details:", error);
-      throw new Error("Failed to get transaction details");
+      console.error("Error saving payment response:", error);
+      throw new Error(`Failed to save payment response: ${error.message}`);
     }
   }
 }
