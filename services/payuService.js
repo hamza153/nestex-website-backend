@@ -127,16 +127,6 @@ class PayUService {
         hash,
       });
 
-      const invoice = await this.payUClient.createInvoice({
-        txnid: txnid,
-        amount: amount,
-        productinfo: productinfo,
-        firstname: firstname,
-        email: email,
-        phone: phone,
-      });
-      console.log("🚀 ~ PayUService ~ generatePaymentIntent ~ invoice:", invoice)
-
       return data;
     } catch (error) {
       console.error("Error generating QR code:", error);
@@ -148,7 +138,6 @@ class PayUService {
    * Save Payment Response
    */
   async savePaymentResponse(paymentResponse, eventType) {
-    console.log("🚀 ~ PayUService ~ savePaymentResponse ~ eventType:", eventType)
     const {
       mihpayid,
       status,
@@ -197,7 +186,6 @@ class PayUService {
       bank_ref_num,
       bankcode,
     } = paymentResponse;
-    console.log("🚀 ~ PayUService ~ savePaymentResponse ~ paymentResponse:", paymentResponse)
     try {
       const webhookData = {
         qrWebHookEvent: eventType,
@@ -254,12 +242,10 @@ class PayUService {
 
       const webhook = new WebhookMongoSchema(webhookData);
       await webhook.save();
-      console.log("🚀 ~ PayUService ~ savePaymentResponse ~ txnid:", txnid)
 
       const payment = await PaymentMongoSchema.findOne({
         reference: txnid,
       });
-      console.log("🚀 ~ PayUService ~ savePaymentResponse ~ payment:", payment)
       payment.status = eventType === "payment_success" ? "success" : "failed";
       payment.paymentId = mihpayid || "";
       payment.qrWebHookData = webhookData;
