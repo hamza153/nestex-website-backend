@@ -10,10 +10,6 @@ const paymentSchema = new Schema({
     type: Date,
     default: Date.now,
   },
-  reference: {
-    type: String,
-    default: "",
-  },
   status: {
     type: String,
     default: "pending",

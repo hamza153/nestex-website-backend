@@ -1,10 +1,5 @@
 const crypto = require("crypto");
-const axios = require("axios");
-const QRCode = require("qrcode");
-const { v4: uuidv4 } = require("uuid");
-const cheerio = require("cheerio");
 const PayU = require("payu-websdk");
-const UserMongoSchema = require("../models/user");
 const PaymentMongoSchema = require("../models/payment");
 const WebhookMongoSchema = require("../models/webhook");
 
@@ -31,13 +26,6 @@ class PayUService {
   }
 
   /**
-   * Generate a unique transaction ID
-   */
-  generateTransactionId() {
-    return `TXN_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
    * Generate hash for PayU API
    */
   generateHash(params) {
@@ -55,67 +43,49 @@ class PayUService {
     return hash;
   }
 
+  async storePayementData(transactionReferenceId, amount, customerName, customerEmail, customerPhone) {
+    const payment = new PaymentMongoSchema({
+      amount,
+      date: new Date(),
+      status: "pending",
+      transactionReferenceId,
+    });
+    await payment.save();
+  }
+
   /**
-   * Generate QR code using PayU's API for QR payments
+   * Generate QR code using PayU's API for QR payments for Turbo Chat
    */
-  async generatePaymentIntent({
+  async generatePaymentIntentWithTxnId({
     customerName,
     customerEmail,
     customerPhone,
     amount,
+    txnId
   }) {
     try {
       if (!this.merchantKey || !this.merchantSalt) {
         throw new Error("PayU credentials not configured");
       }
 
-      let customer = await UserMongoSchema.findOne({ email: customerEmail });
-
-      if (!customer) {
-        customer = new UserMongoSchema({
-          name: customerName,
-          email: customerEmail,
-          contact: customerPhone,
-        });
-        await customer.save();
-      }
-
-      const txnid = this.generateTransactionId();
-
-      const payment = new PaymentMongoSchema({
-        amount: parseFloat(amount),
-        reference: txnid,
-        status: "pending",
-        transactionReferenceId: txnid,
-        thirdPartyTransactionId: txnid,
-      });
-
-      await payment.save();
-
-      const paymentId = payment._id;
-      const customerId = customer._id;
-
-      customer.payments.push(paymentId);
-      await customer.save();
-
-      const surl = `${process.env.BASE_URL}/api/payu/success`;
-      const furl = `${process.env.BASE_URL}/api/payu/failure`;
+      const surl = `${process.env.BASE_URL}/payment/successPayu`;
+      const furl = `${process.env.BASE_URL}/payment/failurePayu`;
       const amountFormatted = parseFloat(amount);
-      const productinfo = "Payment for services";
+      const productinfo = `Payment for AI chat service for ${amount?.toFixed(2)} INR`;
       const firstname = customerName;
       const email = customerEmail;
       const phone = customerPhone;
 
       const hash = this.generateHash({
         key: this.merchantKey,
-        txnid: txnid,
+        txnid: txnId,
         expirytime: 3600,
         amount: amountFormatted.toFixed(2),
       });
 
       const data = await this.payUClient.paymentInitiate({
         isAmountFilledByCustomer: false,
-        txnid: txnid,
+        txnid: txnId,
         amount: amount,
         currency: "INR",
         productinfo: productinfo,
@@ -137,148 +107,27 @@ class PayUService {
   /**
    * Save Payment Response
    */
-  async savePaymentResponse(paymentResponse, eventType) {
-    const {
-      mihpayid,
-      status,
-      unmappedstatus,
-      key,
-      txnid,
-      amount,
-      net_amount_debit,
-      addedon,
-      productinfo,
-      firstname,
-      lastname,
-      address1,
-      address2,
-      city,
-      state,
-      country,
-      zipcode,
-      email,
-      phone,
-      udf1,
-      udf2,
-      udf3,
-      udf4,
-      udf5,
-      udf6,
-      udf7,
-      udf8,
-      udf9,
-      udf10,
-      hash,
-      field1,
-      field2,
-      field3,
-      field4,
-      field5,
-      field6,
-      field7,
-      field8,
-      field9,
-      payment_source,
-      error,
-      error_Message,
-      meCode,
-      PG_TYPE,
-      bank_ref_num,
-      bankcode,
-    } = paymentResponse;
+  async savePaymentResponse(paymentResponse) {
     try {
       const webhookData = {
-        qrWebHookEvent: eventType,
+        qrWebHookEvent: paymentResponse?.status,
         qrWebHookPayload: paymentResponse,
-        qrWebHookData: {
-          payu_id: mihpayid,
-          status: status,
-          unmapped_status: unmappedstatus,
-          key: key,
-          txnid: txnid,
-          amount: amount,
-          net_amount_debit: net_amount_debit,
-          added_on: addedon,
-          product_info: productinfo,
-          customer_first_name: firstname,
-          customer_last_name: lastname || "",
-          customer_address1: address1 || "",
-          customer_address2: address2 || "",
-          customer_city: city || "",
-          customer_state: state || "",
-          customer_country: country || "",
-          customer_zipcode: zipcode || "",
-          customer_email: email,
-          customer_phone: phone,
-          udf1: udf1 || "",
-          udf2: udf2 || "",
-          udf3: udf3 || "",
-          udf4: udf4 || "",
-          udf5: udf5 || "",
-          udf6: udf6 || "",
-          udf7: udf7 || "",
-          udf8: udf8 || "",
-          udf9: udf9 || "",
-          udf10: udf10 || "",
-          hash: hash,
-          field1: field1 || "",
-          field2: field2 || "",
-          field3: field3 || "",
-          field4: field4 || "",
-          field5: field5 || "",
-          field6: field6 || "",
-          field7: field7 || "",
-          field8: field8 || "",
-          field9: field9 || "",
-          payment_source: payment_source,
-          error: error || "",
-          error_message: error_Message || "",
-          meCode: meCode || "",
-          PG_TYPE: PG_TYPE || "",
-          bank_ref_num: bank_ref_num || "",
-          bankcode: bankcode || "",
-        },
+        qrWebHookData: paymentResponse
       };
 
       const webhook = new WebhookMongoSchema(webhookData);
       await webhook.save();
 
       const payment = await PaymentMongoSchema.findOne({
-        reference: txnid,
+        transactionReferenceId: paymentResponse?.transactionReferenceId,
       });
-      payment.status = eventType === "payment_success" ? "success" : "failed";
-      payment.paymentId = mihpayid || "";
-      payment.qrWebHookData = webhookData;
+
+      payment.status = paymentResponse?.status;
+      payment.paymentId = paymentResponse?.mihpayid || "";
+      payment.qrWebHookData = paymentResponse;
       await payment.save();
-
-      let url = new URL(process.env.FE_BASE_URL);
-
-      if (eventType === "payment_success") {
-        url.pathname = "/payment/success";
-      } else {
-        url.pathname = "/payment/failure";
-      }
-
-      url.searchParams.set("txnid", txnid);
-      if (amount !== undefined && amount !== null) {
-        url.searchParams.set("amount", amount);
-      }
-      if (firstname) {
-        url.searchParams.set("firstname", firstname);
-      }
-      if (email) {
-        url.searchParams.set("email", email);
-      }
-      if (phone) {
-        url.searchParams.set("phone", phone);
-      }
-      if (error) {
-        url.searchParams.set("error_code", error);
-      }
-      if (error_Message) {
-        url.searchParams.set("error_message", error_Message);
-      }
-      return url.toString();
+      
+      return true;
     } catch (error) {
       console.error("Error saving payment response:", error);
       throw new Error(`Failed to save payment response: ${error.message}`);

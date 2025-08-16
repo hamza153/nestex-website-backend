@@ -1,30 +1,40 @@
 const express = require("express");
 const router = express.Router();
 const PayUService = require("../services/payuService");
-const WebhookMongoSchema = require("../models/webhook");
 const qr = require("qrcode");
-const { URL } = require("url");
+const axios = require("axios");
 
 // Initialize PayU service
 const payuService = new PayUService();
 
-router.post("/generate-qr-for-payment-page", async (req, res) => {
+router.post("/sendPaymentRequest", async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, amount } = req.body;
 
     //using payment redirect route create a QR
-    const qrLink =
-      process.env.BASE_URL +
-      "/api/payu/payment-redirect?customerName=" +
-      customerName +
-      "&customerEmail=" +
-      customerEmail +
-      "&customerPhone=" +
-      customerPhone +
-      "&amount=" +
-      amount;
+    let data = JSON.stringify({
+      amount: amount,
+      accessCode: "253324",
+      customerName: customerName,
+      customerContact: customerPhone,
+      customerEmail: customerEmail,
+      responseURL: `${process.env.SELF_URL}/api/payu/webhook`,
+    });
 
-    const qrImage = await qr.toDataURL(qrLink);
+    const response = await axios.post(
+      `${process.env.BASE_URL}/payment/generateMerchantQRCode`,
+      data,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    
+    const qrImage = response?.data?.data?.qrCodeURL;
+    const transactionReferenceId = response?.data?.data?.transactionReferenceId;
+
+    await payuService.storePayementData(transactionReferenceId, amount, customerName, customerEmail, customerPhone);
 
     res.json({
       success: true,
@@ -36,27 +46,26 @@ router.post("/generate-qr-for-payment-page", async (req, res) => {
       message: "QR code generated successfully",
     });
   } catch (error) {
+    console.log("🚀 ~ error:", error?.response?.data?.message)
     res.status(500).json({
       error: "Failed to generate QR code for payment page",
-      message: error.message,
+      message: error?.response?.data?.message,
     });
   }
 });
 
-/**
- * POST /api/payu/generate-qr-static
- * Body: { customerId: string, customerName: string, customerEmail: string, customerPhone: string, amount: number }
- */
-router.get("/payment-redirect", async (req, res) => {
+router.get("/payment-redirect-turbo", async (req, res) => {
   try {
-    const { customerName, customerEmail, customerPhone, amount } = req.query;
+    const { customerName, customerEmail, customerPhone, amount, txnId } =
+      req.query;
 
     // Generate QR code using PayU's API
-    const qrData = await payuService.generatePaymentIntent({
+    const qrData = await payuService.generatePaymentIntentWithTxnId({
       customerName: customerName,
       customerEmail: customerEmail,
       customerPhone: customerPhone,
       amount: parseFloat(amount),
+      txnId,
     });
 
     res.send(qrData);
@@ -72,39 +81,15 @@ router.get("/payment-redirect", async (req, res) => {
  * Success callback handler
  * GET /api/payu/success
  */
-router.post("/success", async (req, res) => {
+router.post("/webhook", async (req, res) => {
   try {
-    const url = await payuService.savePaymentResponse(
-      req.body,
-      "payment_success"
-    );
+    const url = await payuService.savePaymentResponse(req.body);
 
-    return res.redirect(303, url);
+    return res.status(200).json({});
   } catch (error) {
     console.error("Error in success callback:", error);
     res.status(500).json({
       error: "Error processing success callback",
-      message: error.message,
-    });
-  }
-});
-
-/**
- * Failure callback handler
- * GET /api/payu/failure
- */
-router.post("/failure", async (req, res) => {
-  try {
-    const url = await payuService.savePaymentResponse(
-      req.body,
-      "payment_failure"
-    );
-
-    return res.redirect(303, url);
-  } catch (error) {
-    console.error("Error in failure callback:", error);
-    res.status(500).json({
-      error: "Error processing failure callback",
       message: error.message,
     });
   }
