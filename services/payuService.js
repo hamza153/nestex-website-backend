@@ -104,6 +104,11 @@ class PayUService {
     }
   }
 
+  async verifyPayUPayments({ txnID }) {
+    const txnData = await this.payUClient.verifyPayment(txnID);
+    return txnData;
+  }
+
   /**
    * Save Payment Response
    */
