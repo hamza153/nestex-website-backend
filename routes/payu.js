@@ -77,6 +77,25 @@ router.get("/payment-redirect-turbo", async (req, res) => {
   }
 });
 
+router.post("/verifyPayments", async (req, res) => {
+  try {
+    const { txnID } = req.body;
+
+    // Generate QR code using PayU's API
+    const txnsData = await payuService.verifyPayUPayments({
+      txnID,
+    });
+
+    res.send(txnsData);
+  } catch (error) {
+    console.log("🚀 ~ error:", error?.response?.data?.message)
+    res.status(500).json({
+      error: "Failed to generate QR code for payment page",
+      message: error?.response?.data?.message,
+    });
+  }
+});
+
 /**
  * Success callback handler
  * GET /api/payu/success

@@ -111,6 +111,12 @@ class PayUService {
       throw new Error(`Failed to generate QR code: ${error.message}`);
     }
   }
+
+  async verifyPayUPayments({ txnID }) {
+    const txnData = await this.payUClient.verifyPayment(txnID);
+    return txnData;
+  }
+  
   /**
    * Save Payment Response
    */
