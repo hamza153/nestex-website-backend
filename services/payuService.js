@@ -43,7 +43,13 @@ class PayUService {
     return hash;
   }
 
-  async storePayementData(transactionReferenceId, amount, customerName, customerEmail, customerPhone) {
+  async storePayementData(
+    transactionReferenceId,
+    amount,
+    customerName,
+    customerEmail,
+    customerPhone
+  ) {
     const payment = new PaymentMongoSchema({
       amount,
       date: new Date(),
@@ -61,7 +67,7 @@ class PayUService {
     customerEmail,
     customerPhone,
     amount,
-    txnId
+    txnId,
   }) {
     try {
       if (!this.merchantKey || !this.merchantSalt) {
@@ -71,7 +77,9 @@ class PayUService {
       const surl = `${process.env.BASE_URL}/payment/successPayu`;
       const furl = `${process.env.BASE_URL}/payment/failurePayu`;
       const amountFormatted = parseFloat(amount);
-      const productinfo = `Payment for AI chat service for ${amount?.toFixed(2)} INR`;
+      const productinfo = `Payment for AI chat service for ${amount?.toFixed(
+        2
+      )} INR`;
       const firstname = customerName;
       const email = customerEmail;
       const phone = customerPhone;
@@ -103,21 +111,19 @@ class PayUService {
       throw new Error(`Failed to generate QR code: ${error.message}`);
     }
   }
-
-  async verifyPayUPayments({ txnID }) {
-    const txnData = await this.payUClient.verifyPayment(txnID);
-    return txnData;
-  }
-
   /**
    * Save Payment Response
    */
   async savePaymentResponse(paymentResponse) {
+    console.log(
+      "🚀 ~ PayUService ~ savePaymentResponse ~ paymentResponse:",
+      paymentResponse
+    );
     try {
       const webhookData = {
         qrWebHookEvent: paymentResponse?.status,
         qrWebHookPayload: paymentResponse,
-        qrWebHookData: paymentResponse
+        qrWebHookData: paymentResponse,
       };
 
       const webhook = new WebhookMongoSchema(webhookData);
@@ -127,11 +133,13 @@ class PayUService {
         transactionReferenceId: paymentResponse?.transactionReferenceId,
       });
 
-      payment.status = paymentResponse?.status;
-      payment.paymentId = paymentResponse?.mihpayid || "";
-      payment.qrWebHookData = paymentResponse;
-      await payment.save();
-      
+      if (payment) {
+        payment.status = paymentResponse?.status;
+        payment.paymentId = paymentResponse?.mihpayid || "";
+        payment.qrWebHookData = paymentResponse;
+        await payment.save();
+      }
+
       return true;
     } catch (error) {
       console.error("Error saving payment response:", error);
