@@ -115,10 +115,6 @@ class PayUService {
    * Save Payment Response
    */
   async savePaymentResponse(paymentResponse) {
-    console.log(
-      "🚀 ~ PayUService ~ savePaymentResponse ~ paymentResponse:",
-      paymentResponse
-    );
     try {
       const webhookData = {
         qrWebHookEvent: paymentResponse?.status,
