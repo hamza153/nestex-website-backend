@@ -22,7 +22,7 @@ router.post("/sendPaymentRequest", async (req, res) => {
     });
 
     const response = await axios.post(
-      `${process.env.BASE_URL}/payment/generateMerchantQRCode`,
+      `${process.env.BASE_URL}/payment/generateRedirectionURL`,
       data,
       {
         headers: {
