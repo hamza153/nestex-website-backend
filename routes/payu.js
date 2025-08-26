@@ -31,7 +31,7 @@ router.post("/sendPaymentRequest", async (req, res) => {
       }
     );
     
-    const qrImage = response?.data?.data?.qrCodeURL;
+    const qrImage = response?.data?.data?.redirectURL;
     const transactionReferenceId = response?.data?.data?.transactionReferenceId;
 
     await payuService.storePayementData(transactionReferenceId, amount, customerName, customerEmail, customerPhone);
