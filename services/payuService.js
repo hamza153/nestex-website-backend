@@ -77,7 +77,7 @@ class PayUService {
       const surl = `${process.env.BASE_URL}/payment/successPayu`;
       const furl = `${process.env.BASE_URL}/payment/failurePayu`;
       const amountFormatted = parseFloat(amount);
-      const productinfo = `Payment for AI chat service for ${amount?.toFixed(
+      const productinfo = `Payment for ${amount?.toFixed(
         2
       )} INR`;
       const firstname = customerName;
