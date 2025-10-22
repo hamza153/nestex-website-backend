@@ -101,6 +101,53 @@ router.post("/sendPaymentRequestCashfree", async (req, res) => {
   }
 });
 
+router.post("/sendPaymentRequestPhonePe", async (req, res) => {
+  try {
+    const { customerName, customerEmail, customerPhone, amount } = req.body;
+
+    //using payment redirect route create a QR
+    let data = JSON.stringify({
+      amount: amount,
+      accessCode: "253324",
+      customerName: customerName,
+      customerContact: customerPhone,
+      customerEmail: customerEmail,
+      responseURL: `${process.env.SELF_URL}/api/payu/webhook`,
+    });
+
+    const response = await axios.post(
+      `${process.env.BASE_URL}/payment/generateRedirectionURLPhonePe`,
+      data,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    
+    const qrImage = response?.data?.data?.redirectURL;
+    const transactionReferenceId = response?.data?.data?.transactionReferenceId;
+
+    await payuService.storePayementData(transactionReferenceId, amount, customerName, customerEmail, customerPhone);
+
+    res.json({
+      success: true,
+      data: {
+        qrCodeDataUrl: qrImage,
+        amount: amount,
+        customerName: customerName,
+      },
+      message: "QR code generated successfully",
+    });
+  } catch (error) {
+    console.log("🚀 ~ error:", error?.response?.data?.message)
+    res.status(500).json({
+      error: "Failed to generate QR code for payment page",
+      message: error?.response?.data?.message,
+    });
+  }
+});
+
 router.get("/payment-redirect-turbo", async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, amount, txnId } =
