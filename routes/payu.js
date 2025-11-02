@@ -9,12 +9,12 @@ const payuService = new PayUService();
 
 router.post("/sendPaymentRequestPayu", async (req, res) => {
   try {
-    const { customerName, customerEmail, customerPhone, amount } = req.body;
+    const { customerName, customerEmail, customerPhone, amount, accessCode } = req.body;
 
     //using payment redirect route create a QR
     let data = JSON.stringify({
       amount: amount,
-      accessCode: "253324",
+      accessCode: accessCode,
       customerName: customerName,
       customerContact: customerPhone,
       customerEmail: customerEmail,
@@ -56,12 +56,12 @@ router.post("/sendPaymentRequestPayu", async (req, res) => {
 
 router.post("/sendPaymentRequestCashfree", async (req, res) => {
   try {
-    const { customerName, customerEmail, customerPhone, amount } = req.body;
+    const { customerName, customerEmail, customerPhone, amount, accessCode } = req.body;
 
     //using payment redirect route create a QR
     let data = JSON.stringify({
       amount: amount,
-      accessCode: "253324",
+      accessCode: accessCode,
       customerName: customerName,
       customerContact: customerPhone,
       customerEmail: customerEmail,
@@ -103,12 +103,12 @@ router.post("/sendPaymentRequestCashfree", async (req, res) => {
 
 router.post("/sendPaymentRequestPhonePe", async (req, res) => {
   try {
-    const { customerName, customerEmail, customerPhone, amount } = req.body;
+    const { customerName, customerEmail, customerPhone, amount, accessCode } = req.body;
 
     //using payment redirect route create a QR
     let data = JSON.stringify({
       amount: amount,
-      accessCode: "253324",
+      accessCode: accessCode,
       customerName: customerName,
       customerContact: customerPhone,
       customerEmail: customerEmail,
@@ -143,6 +143,41 @@ router.post("/sendPaymentRequestPhonePe", async (req, res) => {
     console.log("🚀 ~ error:", error?.response?.data?.message)
     res.status(500).json({
       error: "Failed to generate QR code for payment page",
+      message: error?.response?.data?.message,
+    });
+  }
+});
+
+router.post("/sendPaymentRedirectionPhonePe", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    //using payment redirect route create a QR
+    let data = JSON.stringify({
+      token: token,
+    });
+
+    const response = await axios.post(
+      `${process.env.BASE_URL}/payment/sendPaymentRedirectionPhonePe`,
+      data,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    const qrImage = response?.data?.data?.redirectURL;
+
+    return res.json({
+      success: true,
+      data: {
+        qrCodeDataUrl: qrImage,
+      },
+      message: "Payment redirection successful",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to redirect to payment page",
       message: error?.response?.data?.message,
     });
   }
