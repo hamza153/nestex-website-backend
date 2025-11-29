@@ -183,6 +183,41 @@ router.post("/sendPaymentRedirectionPhonePe", async (req, res) => {
   }
 });
 
+router.post("/sendPaymentRedirectionCCAvenue", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    //using payment redirect route create a QR
+    let data = JSON.stringify({
+      token: token,
+    });
+
+    const response = await axios.post(
+      `${process.env.BASE_URL}/payment/sendPaymentRedirectionCCAvenue`,
+      data,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    const qrImage = response?.data?.data?.redirectURL;
+
+    return res.json({
+      success: true,
+      data: {
+        qrCodeDataUrl: qrImage,
+      },
+      message: "Payment redirection successful",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to redirect to payment page",
+      message: error?.response?.data?.message,
+    });
+  }
+});
+
 router.get("/payment-redirect-turbo", async (req, res) => {
   try {
     const { customerName, customerEmail, customerPhone, amount, txnId } =
